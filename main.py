@@ -274,6 +274,8 @@ def main(args):
     class Hook():
         cls_array = []
         def __init__(self, module, backward=False):
+            self.debug=False
+
             if backward == False:
                 self.hook = module.register_forward_hook(self.hook_fn)
             else:
@@ -281,16 +283,30 @@ def main(args):
         def hook_fn(self, module, input, output):
             self.input = input
             self.output = output
-            x2 = input[0].shape
-            input = input[0].permute(1,0,2)
-            src1 = input.reshape(x2[1],x2[2],x2[0])
-            src2 = torch.bmm(input, src1)
-            Hook.cls_array.append(src2)
-            print("---------------")
-            print(f'src: {src2.shape}')
-            print(f'tgt: {output[0].shape}')
-            print("---------------")
-            #print(cls_array, '12212112')
+
+            in_f = input[0] 
+            mb, p, d = in_f.shape # x2 -> shape
+
+            origin = in_f.permute(1, 0, 2)
+            trans = origin.permute(0, 2, 1) # reshape(x2[1],x2[2],x2[0])
+
+            gram = torch.matmul(origin, trans)
+
+            if self.debug:
+                print("---------------")
+                print(f'src: {input[0].shape}')
+                print(f'tgt: {output[0].shape}')
+                print("---------------")
+
+                print("input shape(mb, p, d): ", in_f.shape)
+                print("origin: ", origin.shape)
+                print("origin^T: ", trans.shape)
+                print("gram: ", gram.shape)
+
+                print("one feature ", in_f[0])
+                print("gram: ", gram[0])
+
+            Hook.cls_array.append(gram)
         def close(self):
             self.hook.remove()
             
@@ -365,7 +381,7 @@ def main(args):
         return np.sum(centering(L_X) * centering(L_Y))
 
 
-    def linear_CKA(X, Y):
+    def linear_CKA(X, Y, debug=False):
         hsic = linear_HSIC(X, Y)
         var1 = np.sqrt(linear_HSIC(X, X))
         var2 = np.sqrt(linear_HSIC(Y, Y))
@@ -373,14 +389,15 @@ def main(args):
         result = hsic / (var1 * var2)
         
         if np.isnan(result):
-            print(var1, var2)
-            if np.isinf(var1):
+            if debug:
+                print(var1, var2)
                 print(X)
+                print(Y)
+                print(linear_HSIC(Y, Y, debug=debug))
+                
+            if np.isinf(var1):
                 exit()
             elif np.isinf(var2):
-                print(Y)
-                print(var2)
-                print(linear_HSIC(Y, Y, debug=True))
                 exit()
                 
             
@@ -555,8 +572,16 @@ def main(args):
                         continue
                     
                     for i in range(0, len(Hook.cls_array[0])):
-                        X = np.array(Hook.cls_array[g][k].cpu())
-                        Y = np.array(Hook.cls_array[j][i].cpu())
+                        if j != 9 and i != 35:
+                            continue
+
+                        X = Hook.cls_array[g][k].cpu().numpy()
+                        Y = Hook.cls_array[j][i].cpu().numpy()
+                        
+                        print(X.shape, Y.shape)
+                        print(X[0])
+                        print(Y[0])
+                        
                         print("-------------------------")
                         print('{}, {} - {}, {}, Linear CKA, between X and Y: {}'.format(g, k, j, i, linear_CKA(X, Y)))
                         max_list.append(linear_CKA(X, Y))
