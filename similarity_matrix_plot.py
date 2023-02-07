@@ -8,7 +8,7 @@ def calculate_similarity_matrix(device, hook_forward, similarity_matrix, target_
 
     for i, layer_ind_i in enumerate(target_layers):
         for j, layer_ind_j in enumerate(target_layers):
-            if i > j:
+            if i >= j:
                 continue
 
             print("################# source layer - ", layer_ind_i, ", target layer -" ,layer_ind_j, "#################")
@@ -31,7 +31,7 @@ def plot_similarity_matrix(similarity_matrix, output_dir, target_layers):
 
     for i in range(len(similarity_matrix)):
         for j in range(len(similarity_matrix[i])):
-            if i > j:
+            if i >= j:
                 continue
 
             plt.matshow(similarity_matrix[i][j])
