@@ -1,9 +1,9 @@
 import numpy as np
+import os
 
 from CKA_cuda import get_cka
 
-def calculate_similarity_matrix(device, hook_forward, similarity_matrix, aggregate_func='avg'):
-    target_layers = [l for l in range(0, 11, 7)]
+def calculate_similarity_matrix(device, hook_forward, similarity_matrix, target_layers, aggregate_func='avg'):
     cka = get_cka(device)
 
     for i, layer_ind_i in enumerate(target_layers):
@@ -26,7 +26,7 @@ def calculate_similarity_matrix(device, hook_forward, similarity_matrix, aggrega
 
                     similarity_matrix[i][j][ind_i][ind_j] += token_cka
 
-def plot_similarity_matrix(similarity_matrix):
+def plot_similarity_matrix(similarity_matrix, output_dir, target_layers):
     import matplotlib.pyplot as plt
 
     for i in range(len(similarity_matrix)):
@@ -35,9 +35,12 @@ def plot_similarity_matrix(similarity_matrix):
                 continue
 
             plt.matshow(similarity_matrix[i][j])
-            plt.title("Maximum CKA similarity of source layer - " + str(i) + "target layer - " + str(j))
-            plt.xlabel("target layer patches")
-            plt.ylabel("source layer patches")
+            plt.title("CKA similarity on patches")
+            plt.xlabel(str(target_layers[j]) + " layer patches")
+            plt.ylabel(str(target_layers[i]) + " layer patches")
             plt.colorbar()
-            plt.show()
+            # plt.show()
+            path = os.path.join(output_dir, "CKA_similarity", "CKA_similarity_matrix_layer" + str(target_layers[i]) + "_layer" + str(target_layers[j]) + ".pdf")
+            plt.savefig(path, bbox_inches='tight', pad_inches=0.5, )
+            plt.clf()
     

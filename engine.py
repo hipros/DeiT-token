@@ -74,7 +74,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, similarity_matrix):
+def evaluate(data_loader, model, device):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -107,7 +107,7 @@ def evaluate(data_loader, model, device, similarity_matrix):
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 @torch.no_grad()
-def CKA_evaluate(data_loader, model, device, similarity_matrix):
+def CKA_evaluate(data_loader, model, device, similarity_matrix, target_layers):
     # Hook the model (DJ)
     hook_forward = [Hook(m) for m in model.modules() if isinstance(m, Block)]
 
@@ -138,7 +138,7 @@ def CKA_evaluate(data_loader, model, device, similarity_matrix):
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
 
-        calculate_similarity_matrix(device, hook_forward, similarity_matrix)
+        calculate_similarity_matrix(device, hook_forward, similarity_matrix, target_layers)
 
     similarity_matrix = np.divide(similarity_matrix, num_iters)
 
