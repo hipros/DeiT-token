@@ -7,9 +7,10 @@ import time
 import torch
 import torch.backends.cudnn as cudnn
 import json
-from timm.models.vision_transformer import VisionTransformer, Block, Attention, PatchEmbed
 import torch.nn as nn
 import math
+from Hook import Hook
+from similarity_matrix_plot import plot_similarity_matrix
 
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from timm.optim import create_optimizer
 from timm.utils import NativeScaler, get_state_dict, ModelEma
 
 from datasets import build_dataset
-from engine import train_one_epoch, evaluate
+from engine import train_one_epoch, evaluate, CKA_evaluate
 from losses import DistillationLoss
 from samplers import RASampler
 from augment import new_data_aug_generator
@@ -270,149 +271,6 @@ def main(args):
         img_size=args.input_size
     )
     
-    
-    class Hook():
-        cls_array = []
-        def __init__(self, module, backward=False):
-            self.debug=False
-
-            if backward == False:
-                self.hook = module.register_forward_hook(self.hook_fn)
-            else:
-                self.hook = module.register_backward_hook(self.hook_fn)
-        def hook_fn(self, module, input, output):
-            self.input = input
-            self.output = output
-
-            in_f = input[0] 
-            mb, p, d = in_f.shape # x2 -> shape
-
-            origin = in_f.permute(1, 0, 2)
-            trans = origin.permute(0, 2, 1) # reshape(x2[1],x2[2],x2[0])
-
-            gram = torch.matmul(origin, trans)
-
-            if self.debug:
-                print("---------------")
-                print(f'src: {input[0].shape}')
-                print(f'tgt: {output[0].shape}')
-                print("---------------")
-
-                print("input shape(mb, p, d): ", in_f.shape)
-                print("origin: ", origin.shape)
-                print("origin^T: ", trans.shape)
-                print("gram: ", gram.shape)
-
-                print("one feature ", in_f[0])
-                print("gram: ", gram[0])
-
-            Hook.cls_array.append(gram)
-        def close(self):
-            self.hook.remove()
-            
-            
-    #def hook(module, x, y):
-        #print(f'is tuple={isinstance(x, tuple)} - length={len(x)}')      
-        #src, tgt = x, y
-        #x2 = x[0].shape
-        #src = src[0].permute(1,0,2)
-        #src1 = src.reshape(x2[1],x2[2],x2[0])
-        #src2 = torch.bmm(src, src1)
-        #print(f'src: {src2[0]}')
-        #print(f'tgt: {tgt[0].shape}')
-    
-    #for m in list(model._modules.items()):
-        #print(m[1])
-        #if isinstance(m[1], PatchEmbed):
-            #m[1].register_forward_hook(hook)
-    #model.register_forward_hook(hook)
-    
-    m = list(model._modules.items())
-    #print("original")
-    #print(m)
-    #print("----------------------")
-    for i in range(len(m[2][1])):
-        #print(i, m[2][1][i])
-        Hook(m[2][1][i])
-        
-    #m[2][1][0].register_forward_hook(hook)
-    
-    def centering(K):
-        n = K.shape[0]
-        unit = np.ones([n, n])
-        I = np.eye(n)
-        H = I - unit / n
-
-        return np.dot(np.dot(H, K), H)  # HKH are the same with KH, KH is the first centering, H(KH) do the second time, results are the sme with one time centering
-        # return np.dot(H, K)  # KH
-
-
-    def rbf(X, sigma=None):
-        GX = np.dot(X, X.T)
-        KX = np.diag(GX) - GX + (np.diag(GX) - GX).T
-        if sigma is None:
-            mdist = np.median(KX[KX != 0])
-            sigma = math.sqrt(mdist)
-        KX *= - 0.5 / (sigma * sigma)
-        KX = np.exp(KX)
-        return KX
-
-
-    def kernel_HSIC(X, Y, sigma):
-        return np.sum(centering(rbf(X, sigma)) * centering(rbf(Y, sigma)))
-
-
-    def linear_HSIC(X, Y, debug=False):
-        L_X = np.dot(X, X.T)
-        L_Y = np.dot(Y, Y.T)
-        
-        if debug:
-            print(L_X, L_Y)
-            print("--------")
-            print(centering(L_X).shape)
-            print("--------")
-            print(centering(L_Y).shape)
-            print("--------")
-            print(centering(L_X) * centering(L_Y))
-            
-        #print("Before Centering", L_X)
-        #print("After Centering", centering(L_X), end="\n\n")
-        
-        return np.sum(centering(L_X) * centering(L_Y))
-
-
-    def linear_CKA(X, Y, debug=False):
-        hsic = linear_HSIC(X, Y)
-        var1 = np.sqrt(linear_HSIC(X, X))
-        var2 = np.sqrt(linear_HSIC(Y, Y))
-        
-        result = hsic / (var1 * var2)
-        
-        if np.isnan(result):
-            if debug:
-                print(var1, var2)
-                print(X)
-                print(Y)
-                print(linear_HSIC(Y, Y, debug=debug))
-                
-            if np.isinf(var1):
-                exit()
-            elif np.isinf(var2):
-                exit()
-                
-            
-
-        return result
-
-
-    def kernel_CKA(X, Y, sigma=None):
-        hsic = kernel_HSIC(X, Y, sigma)
-        var1 = np.sqrt(kernel_HSIC(X, X, sigma))
-        var2 = np.sqrt(kernel_HSIC(Y, Y, sigma))
-
-        return hsic / (var1 * var2)
-      
-    
     if args.finetune:
         if args.finetune.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -551,22 +409,25 @@ def main(args):
                 loss_scaler.load_state_dict(checkpoint['scaler'])
         lr_scheduler.step(args.start_epoch)
     if args.eval:
-        test_stats = evaluate(data_loader_val, model, device)
+        target_layers = [l for l in range(0, 11, 7)]
+        num_target_layer = len(target_layers)
+        num_all_patchs = model.patch_embed.num_patches + 2
+        similarity_matrix = np.zeros( (num_target_layer, num_target_layer, num_all_patchs, num_all_patchs) )
+
+        #test_stats, similarity_matrix = evaluate(data_loader_val, model, device, similarity_matrix)
+        test_stats, similarity_matrix = CKA_evaluate(data_loader_val, model, device, similarity_matrix)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
         print("------------------------")
-        #print(len(cls_array))
-        #print(cls_array[1200])
-        #print(len(cls_array[0]))
-        print("---------")
-        #print(cls_array[0][0].shape)
-        #print(len(cls_array[0][0]))
-        max_list = []
-        final_arr = []
-        
-        target_layers = [l for l in range(0, 11, 3)]
-        
+
+        plot_similarity_matrix(similarity_matrix)
+
+        return
+
+        '''
         for g in target_layers:
             for k in range(0, len(Hook.cls_array[0])):
+                print(Hook.cls_array[g][k].cpu().numpy().shape)
+
                 for j in target_layers:
                     if g >= j:
                         continue
@@ -588,7 +449,7 @@ def main(args):
                 final_arr.append(max(max_list))
                 print("max CKA is : {} ".format(max(max_list)))
         print(final_arr)
-        return
+        '''        
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -645,9 +506,6 @@ def main(args):
                      'epoch': epoch,
                      'n_parameters': n_parameters}
         
-        
-        
-        
         if args.output_dir and utils.is_main_process():
             with (output_dir / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
@@ -656,9 +514,7 @@ def main(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
     print("-----------------------------------------")
-    print(cls_array[0])
     
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('DeiT training and evaluation script', parents=[get_args_parser()])
