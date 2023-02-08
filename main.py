@@ -204,7 +204,7 @@ def main(args):
         raise NotImplementedError("Finetuning with distillation not yet supported")
 
     if args.CKA:
-        path = os.path.join(args.output_dir, 'CKA_similarity')
+        path = os.path.join(args.output_dir)
         os.makedirs(path, exist_ok=True)
         print("CKA similarity matrix will be saved in {}".format(path))
 

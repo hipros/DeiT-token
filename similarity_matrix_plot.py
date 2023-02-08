@@ -41,7 +41,7 @@ def plot_similarity_matrix(similarity_matrix, output_dir, target_layers):
             plt.colorbar()
             plt.clim(0.0 , 1.0)
             # plt.show()
-            path = os.path.join(output_dir, "CKA_similarity", "CKA_similarity_matrix_layer" + str(target_layers[i]) + "_layer" + str(target_layers[j]) + ".pdf")
+            path = os.path.join(output_dir, "CKA_similarity_matrix_layer" + str(target_layers[i]) + "_layer" + str(target_layers[j]) + ".pdf")
             plt.savefig(path, bbox_inches='tight', pad_inches=0.5, )
             plt.clf()
     
