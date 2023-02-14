@@ -104,17 +104,16 @@ class IntermediateDistilledVisionTransformer(DistilledVisionTransformer):
 
         x = self.norm(x)
 
-        return intermediate_tokens[:, 0], intermediate_tokens[:, 1], x[:, 0], x[:, 1]
+        return intermediate_tokens[:, 0], x[:, 0], x[:, 1]
 
 
     def forward(self, x):
-        intermediate_cls_token, intermediate_dist_token, last_cls_token, last_dist_token = self.forward_features(x)
+        intermediate_cls_token, last_cls_token, last_dist_token = self.forward_features(x)
 
         last_x = self.head(last_cls_token)
         last_dist_x = self.head_dist(last_dist_token)
 
         intermediate_x = self.auxiliary_head(intermediate_cls_token)
-        intermediate_dist_x = self.auxiliary_head_dist(intermediate_dist_token)
 
         if self.training:
             # intermediate_dist_x
