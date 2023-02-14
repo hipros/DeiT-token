@@ -76,8 +76,8 @@ class IntermediateDistilledVisionTransformer(DistilledVisionTransformer):
         self.auxiliary_norm = norm_layer(self.embed_dim)
         self.auxiliary_head = nn.Linear(self.embed_dim, self.num_classes) if self.num_classes > 0 else nn.Identity()
 
-        self.auxiliary_head_dist = nn.Linear(self.embed_dim, self.num_classes) if self.num_classes > 0 else nn.Identity()
-        self.auxiliary_head_dist.apply(self._init_weights)
+        #self.auxiliary_head_dist = nn.Linear(self.embed_dim, self.num_classes) if self.num_classes > 0 else nn.Identity()
+        #self.auxiliary_head_dist.apply(self._init_weights)
 
         self.additional_cls_token_layer = 4
 
